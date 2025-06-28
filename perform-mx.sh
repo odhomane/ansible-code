@@ -35,7 +35,11 @@ if [[ "$OS" == "Amazon Linux" && "$VERSION_ID" == "2023" ]]; then
   yum --setopt=cachedir=/tmp/yum-cache update -y --releasever=latest --skip-broken
 
   if grep -q '#!/usr/bin/python3$' /usr/bin/yum; then
-    log "ℹ️ Skipping yum shebang fix — Python handling removed."
+    PYTHON_PATH=$(find /usr/bin/ -maxdepth 1 -type f -name "python3.[0-9]" | head -n1)
+    if [[ -n "$PYTHON_PATH" ]]; then
+      log "🔧 Updating yum shebang to $PYTHON_PATH"
+      sed -i "1s|.*|#!$PYTHON_PATH|" /usr/bin/yum
+    fi
   fi
 
 elif [[ "$OS" == "Red Hat Enterprise Linux" && "$MAJOR_VERSION" == "8" ]]; then
@@ -60,8 +64,22 @@ fi
 log "🧹 Cleaning yum cache..."
 yum clean all
 
+log "🐍 Checking Python 3 version..."
+PY_VER=$(python3 --version 2>/dev/null | awk '{print $2}' || echo "")
+if [[ ! "$PY_VER" =~ ^3\.1 ]]; then
+  ALT_PY=$(find /usr/local/bin/ -maxdepth 1 -type f -name "python3.1?" | head -n1)
+  if [[ -n "$ALT_PY" ]]; then
+    log "🔧 Switching python3 to $ALT_PY"
+    unlink /usr/bin/python3 || true
+    ln -s "$ALT_PY" /usr/bin/python3
+    python3 --version
+  fi
+else
+  log "✅ Python3 already in desired version family."
+fi
+
 log "🧼 Cleaning Tomcat cache..."
 service mstr tomcatstop || true
 rm -rf /opt/apache/tomcat/latest/work/Catalina/localhost/* || true
 
-log "✅ Script complete. No reboot performed. No Python changes applied."
+log "✅ Script complete. No reboot performed."
